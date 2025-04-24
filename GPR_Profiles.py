@@ -4,18 +4,13 @@ import matplotlib
 import matplotlib.pyplot as plt
 import scipy
 
-# Everything from 10-41 should automate the rest of the script
+# Everything from 11-50 should automate the rest of the script
 # You can change the type, type_abrev, and type_title depending on which file you're loading in
 # This code was primarily created for use on DIII-D discharge #162940, so some areas are hyper-tuned to work with that
     # discharge
-type = "electron_temperature"
-type_abrev = "$T_e$"
-type_title = "Electron Temperature"
-data = np.loadtxt('', delimiter = '\t', skiprows = 2)
-psi = data[:,0]
-psi_err = data[:,2]
-e = data[:,1]
-e_err = data[:,3]
+type_abrev = "$T_e$" # either $n_e$ or $T_e$
+type = "electron_temperature" # either electron_temperature or electron_density
+type_title = "Electron Temperature" # either Electron Temperature or Electron Density
 # Defining the interval for our testing points
 seed = np.random.seed(600)
 x_test_lower = 0
@@ -27,6 +22,11 @@ sample_test = "random_" + str(x_test_lower) + "_" + str(x_test_upper) + "_" + st
 bins = 50
 
 if type_abrev == "$T_e$":
+    te_data = np.loadtxt('', delimiter='\t', skiprows=2) # place the necessary file here
+    psi = te_data[:,0]
+    psi_err = te_data[:,2]
+    e = te_data[:,1]
+    e_err = te_data[:,3]
     sig_1 = 0.06
     sig_2 = 1
     var_1 = 1
@@ -34,6 +34,11 @@ if type_abrev == "$T_e$":
     mus = 0
     mu = 0
 if type_abrev == "$n_e$":
+    ne_data = np.loadtxt('', delimiter='\t', skiprows=2) # place the necessary file here
+    psi = ne_data[:,0]
+    psi_err = ne_data[:,2]
+    e = ne_data[:,1]
+    e_err = ne_data[:,3]
     sig_1 = 0.05
     sig_2 = 1
     var_1 = 1
@@ -111,26 +116,38 @@ def logprob(x, y, err, val1, val2, val3, val4):
     loglikelihood = []
     for i in val1:
         for j in val2:
-            for k in val3:
-                for l in val4:
-                    K = sq_exp_kernel(x, x, i, j, k, l) + np.diag(err_sq)
-                    log_prob = np.dot(y, scipy.linalg.solve(K, y)) + np.log(abs(np.linalg.det(K))) + len(y) * np.log(2 * np.pi)
-                    loglikelihood.append(log_prob)
-                    sig1_val.append(i)
-                    sig2_val.append(j)
-                    var1_val.append(k)
-                    var2_val.append(l)
+            if val3 == 1 and val4 == 1:
+                K = sq_exp_kernel(x, x, i, j, 1, 1) + np.diag(err_sq)
+                log_prob = np.dot(y, scipy.linalg.solve(K, y)) + np.log(abs(np.linalg.det(K))) + len(y) * np.log(2 * np.pi)
+                loglikelihood.append(log_prob)
+                sig1_val.append(i)
+                sig2_val.append(j)
+            else:
+                for k in val3:
+                    for l in val4:
+                        K = sq_exp_kernel(x, x, i, j, k, l) + np.diag(err_sq)
+                        log_prob = np.dot(y, scipy.linalg.solve(K, y)) + np.log(abs(np.linalg.det(K))) + len(y) * np.log(2 * np.pi)
+                        loglikelihood.append(log_prob)
+                        sig1_val.append(i)
+                        sig2_val.append(j)
+                        var1_val.append(k)
+                        var2_val.append(l)
     sig1 = 1
     sig2 = 1
     var1 = 1
     var2 = 1
     for i in np.arange(len(loglikelihood)):
-        if loglikelihood[i] == min(loglikelihood):
-            sig1 = sig1_val[i]
-            sig2 = sig2_val[i]
-            var1 = var1_val[i]
-            var2 = var2_val[i]
-    return sig1, sig2, var1, var2, loglikelihood
+        if val3 == 1 and val4 == 1:
+            if loglikelihood[i] == min(loglikelihood):
+                sig1 = sig1_val[i]
+                sig2 = sig2_val[i]
+        else:
+            if loglikelihood[i] == min(loglikelihood):
+                sig1 = sig1_val[i]
+                sig2 = sig2_val[i]
+                var1 = var1_val[i]
+                var2 = var2_val[i]
+    return sig1_val, sig2_val, var1_val, var2_val, sig1, sig2, var1, var2, loglikelihood
 
 # Defining the actual gaussian process
 def GP(x1, y1, x2, y_err, sig_1, sig_2, var_1, var_2, kernel_func):
@@ -142,9 +159,9 @@ def GP(x1, y1, x2, y_err, sig_1, sig_2, var_1, var_2, kernel_func):
                                                   # difficult for the log probability function to find an
                                                   # appropriate value for our hyperparameters
     #length_train_2 = np.arange(0.01, 1, 0.01)
-    #var_train_1 = np.arange(0.01, 1, 0.01)
-    #var_train_2 = np.arange(0.01, 1, 0.01)
-    #sig_1, sig_2, var_1, var_2, loglikelihood = logprob(x1, y1, y_err, length_train_1, length_train_2, var_train_1, var_train_2)
+    #var_train_1 = 1 #np.arange(0.99, 1, 0.01)
+    #var_train_2 = 1 #np.arange(0.99, 1, 0.01)
+    #sig1_val, sig2_val, var1_val, var2_val, sig_1, sig_2, var_1, var_2, loglikelihood = logprob(x1, y1, y_err, length_train_1, length_train_2, var_train_1, var_train_2)
     #print(sig_1, sig_2, var_1, var_2)
 
     y_err_sq = []
@@ -155,7 +172,7 @@ def GP(x1, y1, x2, y_err, sig_1, sig_2, var_1, var_2, kernel_func):
 
     #plt.figure()
     #ax = plt.axes(projection = '3d')
-    #ax.scatter3D(sig_1_vals, sig_2_vals, loglikelihood, label = "log prob")
+    #ax.scatter3D(sig1_val, sig2_val, loglikelihood, label = "log prob")
     #ax.scatter3D(sig_1, sig_2, min(loglikelihood), 'ro', label = "$\sigma_{1|2}$")
     #plt.title("log probability")
     #plt.legend()
@@ -166,17 +183,17 @@ def GP(x1, y1, x2, y_err, sig_1, sig_2, var_1, var_2, kernel_func):
     #plt.figure()
     #log_prob_sig_1 = []
 
-    # Calculating these again for 2D plotting purposes, this part can be commented out to save time
-    # This does help to visualize the log probability functions to see how well or poorly the hyperparameter values
+     # Calculating these again for 2D plotting purposes, this part can be commented out to save time
+     # This does help to visualize the log probability functions to see how well or poorly the hyperparameter values
         # are being calculated, however
 
     #for l in length_train_1:
-    #    K = kernel_func(x1, x1, l, sig_2) + np.diag(y_err_sq) * noise_funcn(x1, x1)
+    #    K = kernel_func(x1, x1, l, sig_2, 1, 1) + np.diag(y_err_sq)
     #    log_prob_sig_1.append(np.dot(y1, scipy.linalg.solve(K, y1)) + np.log(abs(np.linalg.det(K))) + len(y1) * np.log(2 * np.pi))
 
     #log_prob_sig_2 = []
     #for k in length_train_2:
-    #    K = kernel_func(x1, x1, sig_1, k) + np.diag(y_err_sq) * noise_funcn(x1, x1)
+    #    K = kernel_func(x1, x1, sig_1, k, 1, 1) + np.diag(y_err_sq)
     #    log_prob_sig_2.append(np.dot(y1, scipy.linalg.solve(K, y1)) + np.log(abs(np.linalg.det(K))) + len(y1) * np.log(2 * np.pi))
 
     #plt.plot(length_train_1, log_prob_sig_1, "r", label = "log prob, $\sigma_{1}$")
@@ -190,6 +207,7 @@ def GP(x1, y1, x2, y_err, sig_1, sig_2, var_1, var_2, kernel_func):
     #plt.savefig("logprob_" + type + "_core_" + str(sample_core) + "_ped_" + str(sample_ped) + "_edge_" + str(sample_edge)
     #            + "_sample_" + str(sample_test) + "_sig_1_" + str(sig_1) + "_sig_2_" + str(sig_2) + "_plotted_" + str(ny) + ".png")
     #plt.show()
+    #sys.exit()
 
     #print(sig_1)
     var_1 = var_1
